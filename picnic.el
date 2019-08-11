@@ -144,25 +144,25 @@ ARGS is the arguments list from transient."
 
 (defun pye/run-in-term (buffer-name cmd &optional args)
   "Runs foo in a `term' buffer."
-  (let* ((switches (split-string-and-unquote args))
+  (let* ((switches (cond ((listp args) args) (t (split-string-and-unquote args))))
          (termbuf (apply 'make-term buffer-name cmd nil switches)))
     (set-buffer termbuf)
     (term-mode)
-    (term-char-mode)
     (switch-to-buffer termbuf)))
 
 (defun picnic/diff ()
   (interactive)
   (let
     ((default-directory (projectile-project-root))
-      (picnic/diff-buffer-name "*picnic/diff*"))
+      (picnic/diff-buffer-name "picnic/diff"))
     (setenv "EDITOR" "emacs -Q")
     (pye/run-in-term picnic/diff-buffer-name "make" "diff")))
 
 (defun picnic/make (command &optional args)
+  (interactive)
   (let
     ((default-directory (projectile-project-root))
-      (picnic/land-buffer-name "*picnic*"))
+      (picnic/land-buffer-name "picnic"))
     (picnic/create-or-pop-to-buffer picnic/land-buffer-name)
     (start-process "land" picnic/land-buffer-name "make" command)))
 
@@ -174,6 +174,7 @@ ARGS is the arguments list from transient."
   (interactive)
   (picnic/make "release"))
 
+
 (defun picnic/get-staging-pods ()
   (interactive)
   (picnic/get-pods picnic/env-staging))
@@ -182,15 +183,72 @@ ARGS is the arguments list from transient."
   (interactive)
   (picnic/get-pods picnic/env-production))
 
+(defun picnic/dev-select-migration-file ()
+  (interactive)
+  (file-name-nondirectory
+  (read-file-name "Select migration: " (concat (projectile-project-root) "packages/models/db/sequelize_migrations"))))
+
+(defun picnic/dev-run-in-app (working-directory command)
+  (interactive)
+  (let ((buffer-name "picnic/dev-run-in-app")
+        (program "/bin/bash"))
+    (pye/run-in-term buffer-name program)
+    (comint-send-string
+      (format "*%s*" buffer-name)
+      (format "docker exec -it -w %s picnic_picnichealth-app_1 %s" working-directory command))))
+
+(defun picnic/dev-exec-to-app ()
+  (interactive)
+  (let ((buffer-name "picnic/dev-exec-to-app"))
+    (pye/run-in-term buffer-name "docker" "exec -it picnic_picnichealth-app_1 bash")))
+
+(defun picnic/dev-migration-create ()
+  (interactive)
+  (let ((name (read-string "Migration name (use kebab-case): ")))
+    (picnic/dev-run-in-app
+      "/picnic/packages/models"
+      (format "bin/sequelize migration:create --name %s" name))))
+
+(defun picnic/dev-migration-up ()
+  "Run migration."
+  (interactive)
+  (picnic/dev-run-in-app "/picnic/packages/models" "bin/sequelize db:migrate"))
+
+(define-suffix-command picnic/dev-migration-down (args)
+  "Undo database migration on dev env."
+  (interactive (list (picnic/dev-migration-arguments)))
+  (let ((migration-name (cond ((string= (car args) "--name") (picnic/dev-select-migration-file)) (t nil))))
+    (picnic/dev-run-in-app
+      "/picnic/packages/models"
+      (cond
+        ((eq migration-name nil) "bin/sequelize db:migrate:undo --name nay")
+        (t (format "bin/sequelize db:migrate:undo --name %s" migration-name))))))
+
+(define-transient-command picnic/dev-migration ()
+  "Migration on dev env."
+  [:description "Arguments"
+   ("-n" "Undo by name" ("-n" "--name"))]
+  [:description "Migration"
+   ("c" "Create" picnic/dev-migration-create)
+   ("r" "Run" picnic/dev-migration-up)
+   ("u" "Undo" picnic/dev-migration-down)]
+  (interactive)
+  (transient-setup 'picnic/dev-migration nil nil))
+
+(defun picnic/dev-migration-arguments ()
+  (transient-args 'picnic/dev-migration))
+
 (define-transient-command picnic ()
-  "Picnic🍏 🍎 🍐 🍊 🍋 🍌 🍉 🍇 🍓 🍈 🍒 🍑 🍍 🍅 🍆 🥑"
-  ["Dev"
+  ["Development"
     ("d" "Diff" picnic/diff)
     ("l" "Land" picnic/make)
-    ("r" "Release" picnic/release)]
-  ["Kube"
-    ("p p" "Prod Pods" picnic/get-production-pods)
-    ("s p" "Staging Pods" picnic/get-staging-pods)])
+    ("r" "Release" picnic/release)
+    ("e" "Exec to app" picnic/dev-exec-to-app)
+    ("m" "Migration" picnic/dev-migration)]
+  ["Staging"
+    ("s p" "Staging Pods" picnic/get-staging-pods)]
+  ["Production"
+    ("p p" "Prod Pods" picnic/get-production-pods)])
 
 (provide 'picnic)
 ;;; picnic.el ends here
