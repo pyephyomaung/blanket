@@ -11,6 +11,18 @@
 (defconst picnic/env-staging "staging")
 (defconst picnic/env-production "production")
 
+(defun picnic/run-in-term (buffer-name cmd &optional args)
+  "Runs foo in a `term' buffer."
+  (let* ((switches (cond ((listp args) args) (t (split-string-and-unquote args))))
+         (termbuf (apply 'make-term buffer-name cmd nil switches)))
+    (set-buffer termbuf)
+    (term-mode)
+    (switch-to-buffer termbuf)))
+
+;;;;;;;;;;;;;;;;
+;; Kubernetes ;;
+;;;;;;;;;;;;;;;;
+
 (defun picnic/kubectl (env)
   "Utility function to prefix the kubectl command for ENV."
   (cond
@@ -130,6 +142,10 @@ ARGS is the arguments list from transient."
   (hl-line-mode 1)
   (run-mode-hooks 'picnic-mode-hook))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Development commands ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun picnic/get-pods (env)
   (picnic/create-or-pop-to-buffer (picnic/buffer-name))
   (setq tabulated-list-format picnic/tabulated-list-format)
@@ -142,21 +158,13 @@ ARGS is the arguments list from transient."
   (interactive)
   (message "TODO"))
 
-(defun pye/run-in-term (buffer-name cmd &optional args)
-  "Runs foo in a `term' buffer."
-  (let* ((switches (cond ((listp args) args) (t (split-string-and-unquote args))))
-         (termbuf (apply 'make-term buffer-name cmd nil switches)))
-    (set-buffer termbuf)
-    (term-mode)
-    (switch-to-buffer termbuf)))
-
 (defun picnic/diff ()
   (interactive)
   (let
     ((default-directory (projectile-project-root))
       (picnic/diff-buffer-name "picnic/diff"))
     (setenv "EDITOR" "emacs -Q")
-    (pye/run-in-term picnic/diff-buffer-name "make" "diff")))
+    (picnic/run-in-term picnic/diff-buffer-name "make" "diff")))
 
 (defun picnic/make (command &optional args)
   (interactive)
@@ -188,11 +196,20 @@ ARGS is the arguments list from transient."
   (file-name-nondirectory
   (read-file-name "Select migration: " (concat (projectile-project-root) "packages/models/db/sequelize_migrations"))))
 
+(defun picnic/dev-run-in-term (working-directory command)
+  (interactive)
+  (let ((buffer-name "picnic/dev-run-in-term")
+        (program "/bin/bash"))
+    (picnic/run-in-term buffer-name program)
+    (comint-send-string
+      (format "*%s*" buffer-name)
+      (format "cd %s\n%s" working-directory command))))
+
 (defun picnic/dev-run-in-app (working-directory command)
   (interactive)
   (let ((buffer-name "picnic/dev-run-in-app")
         (program "/bin/bash"))
-    (pye/run-in-term buffer-name program)
+    (picnic/run-in-term buffer-name program)
     (comint-send-string
       (format "*%s*" buffer-name)
       (format "docker exec -it -w %s picnic_picnichealth-app_1 %s" working-directory command))))
@@ -200,7 +217,7 @@ ARGS is the arguments list from transient."
 (defun picnic/dev-exec-to-app ()
   (interactive)
   (let ((buffer-name "picnic/dev-exec-to-app"))
-    (pye/run-in-term buffer-name "docker" "exec -it picnic_picnichealth-app_1 bash")))
+    (picnic/run-in-term buffer-name "docker" "exec -it picnic_picnichealth-app_1 bash")))
 
 (defun picnic/dev-migration-create ()
   (interactive)
@@ -238,13 +255,66 @@ ARGS is the arguments list from transient."
 (defun picnic/dev-migration-arguments ()
   (transient-args 'picnic/dev-migration))
 
+
+;;;;;;;;;;;;;
+;; Testing ;;
+;;;;;;;;;;;;;
+(defun picnic/dev-testing-arguments ()
+  (transient-args 'picnic/dev-testing))
+
+(define-suffix-command picnic/dev-test-export-dataset (args)
+  "Test export_dataset."
+  (interactive (list (picnic/dev-testing-arguments)))
+  (picnic/dev-run-in-term
+    (concat (projectile-project-root) "python/picnic/export_dataset")
+    "../../bin/docker-test export_dataset picnichealth/export-dataset mount"))
+
+(define-suffix-command picnic/dev-test-export-dataset-tools (args)
+  "Test export-dataset-tools."
+  (interactive (list (picnic/dev-testing-arguments)))
+  (let ((picnic-root (projectile-project-root)))
+    (picnic/dev-run-in-term
+      (projectile-project-root)
+      (concat
+        "docker run --rm"
+        " --env-file /Users/pye/Repositories/picnic/secrets/local.env"
+        " --env PYTHON_ENV=test"
+        (format " -v %s/python/picnic/export_dataset:/picnic/export_dataset" picnic-root)
+        (format " -v %s/python/picnic/config:/picnic/config" picnic-root)
+        (format " -v %s/python/picnic/enums:/picnic/enums" picnic-root)
+        (format " -v %s/python/picnic/db_models:/picnic/db_models" picnic-root)
+        (format " -v %s/python/picnic/utils:/picnic/utils" picnic-root)
+        (format " -v %s/python/picnic/jobs:/picnic/jobs" picnic-root)
+        (format " -v %s/packages/export-dataset-tools:/picnic/export_dataset_tools" picnic-root)
+        (format " -v %s/packages/libs:/picnic/libs" picnic-root)
+        " -v /picnic/export_dataset_tools/node_modules"
+        " -v /picnic/libs/node_modules"
+        " picnichealth/export-dataset"
+        " sh -c 'cd /picnic/export_dataset_tools && make test'"))))
+
+(define-transient-command picnic/dev-testing ()
+  "Testing on dev env."
+  [:description "Arguments"
+   ("-p" "Undo by name" ("-p" "--path"))]
+  [:description "Testing"
+   ("e" "export-dataset" picnic/dev-test-export-dataset)
+   ("f" "export-dataset-tools" picnic/dev-test-export-dataset-tools)]
+  (interactive)
+  (transient-setup 'picnic/dev-testing nil nil))
+
+
+;;;;;;;;;;;;;;;
+;; Main menu ;;
+;;;;;;;;;;;;;;;
+
 (define-transient-command picnic ()
   ["Development"
     ("d" "Diff" picnic/diff)
     ("l" "Land" picnic/make)
     ("r" "Release" picnic/release)
     ("e" "Exec to app" picnic/dev-exec-to-app)
-    ("m" "Migration" picnic/dev-migration)]
+    ("m" "Migration" picnic/dev-migration)
+    ("t" "Testing" picnic/dev-testing)]
   ["Staging"
     ("s p" "Staging Pods" picnic/get-staging-pods)]
   ["Production"
