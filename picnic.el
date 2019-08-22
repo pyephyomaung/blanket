@@ -11,13 +11,9 @@
 (defconst picnic/env-staging "staging")
 (defconst picnic/env-production "production")
 
-(defun picnic/run-in-term (buffer-name cmd &optional args)
+(defun picnic/run-in-term (buffer-name)
   "Runs foo in a `term' buffer."
-  (let* ((switches (cond ((listp args) args) (t (split-string-and-unquote args))))
-         (termbuf (apply 'make-term buffer-name cmd nil switches)))
-    (set-buffer termbuf)
-    (term-mode)
-    (switch-to-buffer termbuf)))
+  (ansi-term "bash" buffer-name))
 
 ;;;;;;;;;;;;;;;;
 ;; Kubernetes ;;
@@ -164,7 +160,7 @@ ARGS is the arguments list from transient."
     ((default-directory (projectile-project-root))
       (picnic/diff-buffer-name "picnic/diff"))
     (setenv "EDITOR" "emacs -Q")
-    (picnic/run-in-term picnic/diff-buffer-name "make" "diff")))
+    (picnic/dev-run-in-term (projectile-project-root) "make diff")))
 
 (defun picnic/make (command &optional args)
   (interactive)
@@ -198,9 +194,8 @@ ARGS is the arguments list from transient."
 
 (defun picnic/dev-run-in-term (working-directory command)
   (interactive)
-  (let ((buffer-name "picnic/dev-run-in-term")
-        (program "/bin/bash"))
-    (picnic/run-in-term buffer-name program)
+  (let ((buffer-name "picnic/dev-run-in-term"))
+    (picnic/run-in-term buffer-name)
     (comint-send-string
       (format "*%s*" buffer-name)
       (format "cd %s\n%s" working-directory command))))
@@ -209,7 +204,7 @@ ARGS is the arguments list from transient."
   (interactive)
   (let ((buffer-name "picnic/dev-run-in-app")
         (program "/bin/bash"))
-    (picnic/run-in-term buffer-name program)
+    (picnic/run-in-term buffer-name)
     (comint-send-string
       (format "*%s*" buffer-name)
       (format "docker exec -it -w %s picnic_picnichealth-app_1 %s" working-directory command))))
@@ -217,7 +212,10 @@ ARGS is the arguments list from transient."
 (defun picnic/dev-exec-to-app ()
   (interactive)
   (let ((buffer-name "picnic/dev-exec-to-app"))
-    (picnic/run-in-term buffer-name "docker" "exec -it picnic_picnichealth-app_1 bash")))
+    (picnic/run-in-term buffer-name)
+    (comint-send-string
+      (format "*%s*" buffer-name)
+      "docker exec -it picnic_picnichealth-app_1 bash")))
 
 (defun picnic/dev-migration-create ()
   (interactive)
@@ -262,6 +260,30 @@ ARGS is the arguments list from transient."
 (defun picnic/dev-testing-arguments ()
   (transient-args 'picnic/dev-testing))
 
+(define-suffix-command picnic/dev-test-app (args)
+  "Test app."
+  (interactive (list (picnic/dev-testing-arguments)))
+  (let ((picnic-root (projectile-project-root))
+         (test-file (replace-regexp-in-string
+                      ".*\/packages/app"
+                      "/picnic/packages/app"
+                      (read-file-name "Select test file: " (concat (projectile-project-root) "packages/app/test")))))
+    (picnic/dev-run-in-term
+      (projectile-project-root)
+      (concat
+        "docker run --rm"
+        (format " --env-file %ssecrets/local.env" picnic-root)
+        " --env NODE_ENV=test"
+        " --env USER"
+        " --env DEV_LOCAL_IP=host.docker.internal"
+        (format " -v %s:/picnic" picnic-root)
+        " -v /picnic/packages/app/node_modules"
+        " -v /picnic/packages/libs/node_modules"
+        " -v /picnic/packages/mission-design/node_modules"
+        " -v /picnic/packages/models/node_modules"
+        " picnic_picnichealth-app"
+        (format " sh -c 'cd /picnic && make test-js-app TEST_FILES=%s'" test-file)))))
+
 (define-suffix-command picnic/dev-test-export-dataset (args)
   "Test export_dataset."
   (interactive (list (picnic/dev-testing-arguments)))
@@ -277,7 +299,7 @@ ARGS is the arguments list from transient."
       (projectile-project-root)
       (concat
         "docker run --rm"
-        " --env-file /Users/pye/Repositories/picnic/secrets/local.env"
+        (format " --env-file %ssecrets/local.env" picnic-root)
         " --env PYTHON_ENV=test"
         (format " -v %s/python/picnic/export_dataset:/picnic/export_dataset" picnic-root)
         (format " -v %s/python/picnic/config:/picnic/config" picnic-root)
@@ -297,6 +319,7 @@ ARGS is the arguments list from transient."
   [:description "Arguments"
    ("-p" "Undo by name" ("-p" "--path"))]
   [:description "Testing"
+   ("a" "app" picnic/dev-test-app)
    ("e" "export-dataset" picnic/dev-test-export-dataset)
    ("f" "export-dataset-tools" picnic/dev-test-export-dataset-tools)]
   (interactive)
