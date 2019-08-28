@@ -11,9 +11,20 @@
 (defconst picnic/env-staging "staging")
 (defconst picnic/env-production "production")
 
-(defun picnic/run-in-term (buffer-name)
-  "Runs foo in a `term' buffer."
+(defun picnic/upsert-ansi-term-buffer (buffer-name)
+  "Initialize term in a `term' buffer."
   (ansi-term "bash" buffer-name))
+
+(defun picnic/upsert-eshell-buffer (buffer-name)
+  "Initialize eshell buffer."
+  (let* ((eshell-buffer-exists (member buffer-name
+                                 (mapcar (lambda (buf) (buffer-name buf))
+                                   (buffer-list)))))
+    (if eshell-buffer-exists
+      (switch-to-buffer buffer-name)
+      (progn
+        (eshell 99)
+        (rename-buffer buffer-name)))))
 
 ;;;;;;;;;;;;;;;;
 ;; Kubernetes ;;
@@ -160,7 +171,7 @@ ARGS is the arguments list from transient."
     ((default-directory (projectile-project-root))
       (picnic/diff-buffer-name "picnic/diff"))
     (setenv "EDITOR" "emacs -Q")
-    (picnic/dev-run-in-term (projectile-project-root) "make diff")))
+    (picnic/dev-run-in-terminal (projectile-project-root) "make diff")))
 
 (defun picnic/make (command &optional args)
   (interactive)
@@ -190,21 +201,23 @@ ARGS is the arguments list from transient."
 (defun picnic/dev-select-migration-file ()
   (interactive)
   (file-name-nondirectory
-  (read-file-name "Select migration: " (concat (projectile-project-root) "packages/models/db/sequelize_migrations"))))
+    (read-file-name "Select migration: " (concat (projectile-project-root) "packages/models/db/sequelize_migrations"))))
 
-(defun picnic/dev-run-in-term (working-directory command)
+(defun picnic/dev-run-in-terminal (working-directory command)
   (interactive)
-  (let ((buffer-name "picnic/dev-run-in-term"))
-    (picnic/run-in-term buffer-name)
-    (comint-send-string
-      (format "*%s*" buffer-name)
-      (format "cd %s\n%s" working-directory command))))
+  (let ((buffer-name "picnic/dev-run-in-terminal")
+        (default-directory working-directory))
+    (picnic/upsert-eshell-buffer buffer-name)
+    (with-current-buffer buffer-name
+      (eshell-return-to-prompt)
+      (insert command)
+      (eshell-send-input nil nil t))))
 
 (defun picnic/dev-run-in-app (working-directory command)
   (interactive)
-  (let ((buffer-name "picnic/dev-run-in-app")
+  (let ((buffer-name "*eshell*<picnic/dev-run-in-app>")
         (program "/bin/bash"))
-    (picnic/run-in-term buffer-name)
+    (picnic/upsert-ansi-term-buffer buffer-name)
     (comint-send-string
       (format "*%s*" buffer-name)
       (format "docker exec -it -w %s picnic_picnichealth-app_1 %s" working-directory command))))
@@ -212,7 +225,7 @@ ARGS is the arguments list from transient."
 (defun picnic/dev-exec-to-app ()
   (interactive)
   (let ((buffer-name "picnic/dev-exec-to-app"))
-    (picnic/run-in-term buffer-name)
+    (picnic/upsert-ansi-term-buffer buffer-name)
     (comint-send-string
       (format "*%s*" buffer-name)
       "docker exec -it picnic_picnichealth-app_1 bash")))
@@ -260,15 +273,18 @@ ARGS is the arguments list from transient."
 (defun picnic/dev-testing-arguments ()
   (transient-args 'picnic/dev-testing))
 
-(define-suffix-command picnic/dev-test-app (args)
+(define-suffix-command picnic/dev-test-app (args &optional is-frontend)
   "Test app."
   (interactive (list (picnic/dev-testing-arguments)))
-  (let ((picnic-root (projectile-project-root))
+  (let* ((picnic-root (projectile-project-root))
          (test-file (replace-regexp-in-string
                       ".*\/packages/app"
                       "/picnic/packages/app"
-                      (read-file-name "Select test file: " (concat (projectile-project-root) "packages/app/test")))))
-    (picnic/dev-run-in-term
+                      (read-file-name "Select test file: "
+                        (cond
+                          ((string-match picnic-root (buffer-file-name)) (buffer-file-name))
+                          (t (concat picnic-root "packages/app/test")))))))
+    (picnic/dev-run-in-terminal
       (projectile-project-root)
       (concat
         "docker run --rm"
@@ -277,17 +293,27 @@ ARGS is the arguments list from transient."
         " --env USER"
         " --env DEV_LOCAL_IP=host.docker.internal"
         (format " -v %s:/picnic" picnic-root)
+        " -v /picnic/node_modules"
         " -v /picnic/packages/app/node_modules"
         " -v /picnic/packages/libs/node_modules"
         " -v /picnic/packages/mission-design/node_modules"
         " -v /picnic/packages/models/node_modules"
         " picnic_picnichealth-app"
-        (format " sh -c 'cd /picnic && make test-js-app TEST_FILES=%s'" test-file)))))
+        (cond
+          ((eq is-frontend t)
+            (format " sh -c 'cd /picnic/packages/app && /picnic/node_modules/.bin/jest %s'" test-file))
+          (t
+            (format " sh -c 'cd /picnic && make test-js-app TEST_FILES=%s'" test-file)))))))
+
+(defun picnic/dev-test-app-frontend (args)
+  (interactive (list (picnic/dev-testing-arguments)))
+  (picnic/dev-test-app args t))
+
 
 (define-suffix-command picnic/dev-test-export-dataset (args)
   "Test export_dataset."
   (interactive (list (picnic/dev-testing-arguments)))
-  (picnic/dev-run-in-term
+  (picnic/dev-run-in-terminal
     (concat (projectile-project-root) "python/picnic/export_dataset")
     "../../bin/docker-test export_dataset picnichealth/export-dataset mount"))
 
@@ -295,7 +321,7 @@ ARGS is the arguments list from transient."
   "Test export-dataset-tools."
   (interactive (list (picnic/dev-testing-arguments)))
   (let ((picnic-root (projectile-project-root)))
-    (picnic/dev-run-in-term
+    (picnic/dev-run-in-terminal
       (projectile-project-root)
       (concat
         "docker run --rm"
@@ -316,12 +342,11 @@ ARGS is the arguments list from transient."
 
 (define-transient-command picnic/dev-testing ()
   "Testing on dev env."
-  [:description "Arguments"
-   ("-p" "Undo by name" ("-p" "--path"))]
   [:description "Testing"
    ("a" "app" picnic/dev-test-app)
+   ("f" "app/frontend" picnic/dev-test-app-frontend)
    ("e" "export-dataset" picnic/dev-test-export-dataset)
-   ("f" "export-dataset-tools" picnic/dev-test-export-dataset-tools)]
+   ("t" "export-dataset-tools" picnic/dev-test-export-dataset-tools)]
   (interactive)
   (transient-setup 'picnic/dev-testing nil nil))
 
