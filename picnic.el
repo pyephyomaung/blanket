@@ -21,7 +21,7 @@
                                  (mapcar (lambda (buf) (buffer-name buf))
                                    (buffer-list)))))
     (if eshell-buffer-exists
-      (switch-to-buffer buffer-name)
+      (pop-to-buffer buffer-name)
       (progn
         (eshell 99)
         (rename-buffer buffer-name)))))
@@ -278,8 +278,8 @@ ARGS is the arguments list from transient."
   (interactive (list (picnic/dev-testing-arguments)))
   (let* ((picnic-root (projectile-project-root))
          (test-file (replace-regexp-in-string
-                      ".*\/packages/app"
-                      "/picnic/packages/app"
+                      ".*\/packages"
+                      "packages"
                       (read-file-name "Select test file: "
                         (cond
                           ((string-match picnic-root (buffer-file-name)) (buffer-file-name))
