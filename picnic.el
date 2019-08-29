@@ -220,11 +220,9 @@ ARGS is the arguments list from transient."
 
 (defun picnic/dev-exec-to-app ()
   (interactive)
-  (let ((buffer-name "picnic/dev-exec-to-app"))
-    (picnic/upsert-ansi-term-buffer buffer-name)
-    (comint-send-string
-      (format "*%s*" buffer-name)
-      "docker exec -it picnic_picnichealth-app_1 bash")))
+  (picnic/dev-run-in-terminal
+    default-directory
+    "docker exec -it picnic_picnichealth-app_1 bash"))
 
 ;;;;;;;;;;;;;;;
 ;; Migration ;;
@@ -242,22 +240,20 @@ ARGS is the arguments list from transient."
   (interactive)
   (picnic/dev-run-in-app "/picnic/packages/models" "bin/sequelize db:migrate"))
 
-(define-suffix-command picnic/dev-migration-down (args)
+(define-transient-command picnic/dev-migration-down ()
   "Undo database migration on dev env."
-  (interactive (list (picnic/dev-migration-arguments)))
-  (let ((migration-name (cond ((string= (car args) "--name") (picnic/dev-select-migration-file)) (t nil))))
+  (interactive)
+  (let ((migration-name (picnic/dev-select-migration-file)))
     (picnic/dev-run-in-app
-      "/picnic/packages/models"
-      (cond
-        ((eq migration-name nil) "bin/sequelize db:migrate:undo --name nay")
-        (t (format "bin/sequelize db:migrate:undo --name %s" migration-name))))))
+    "/picnic/packages/models"
+    (format "bin/sequelize db:migrate:undo --name %s" migration-name))))
 
 (define-transient-command picnic/dev-migration ()
   "Migration on dev env."
   [:description "Arguments"
    ("-n" "Undo by name" ("-n" "--name"))]
   [:description "Migration"
-   ("c" "Create" picnic/dev-migration-create)
+    ("c" "Create" picnic/dev-migration-create)
    ("r" "Run" picnic/dev-migration-up)
    ("u" "Undo" picnic/dev-migration-down)]
   (interactive)
@@ -318,6 +314,13 @@ ARGS is the arguments list from transient."
     (concat (projectile-project-root) "python/picnic/export_dataset")
     "../../bin/docker-test export_dataset picnichealth/export-dataset mount"))
 
+(define-suffix-command picnic/dev-test-labelling (args)
+  "Test labelling."
+  (interactive (list (picnic/dev-testing-arguments)))
+  (picnic/dev-run-in-terminal
+    (concat (projectile-project-root) "python/picnic/labelling")
+    "../../bin/docker-test labelling picnichealth/labelling mount"))
+
 (define-suffix-command picnic/dev-test-export-dataset-tools (args)
   "Test export-dataset-tools."
   (interactive (list (picnic/dev-testing-arguments)))
@@ -341,29 +344,27 @@ ARGS is the arguments list from transient."
         " picnichealth/export-dataset"
         " sh -c 'cd /picnic/export_dataset_tools && make test'"))))
 
-(define-transient-command picnic/dev-testing ()
-  "Testing on dev env."
-  [:description "Testing"
-   ("a" "app" picnic/dev-test-app)
-   ("f" "app/frontend" picnic/dev-test-app-frontend)
-   ("e" "export-dataset" picnic/dev-test-export-dataset)
-   ("t" "export-dataset-tools" picnic/dev-test-export-dataset-tools)]
-  (interactive)
-  (transient-setup 'picnic/dev-testing nil nil))
-
-
 ;;;;;;;;;;;;;;;
 ;; Main menu ;;
 ;;;;;;;;;;;;;;;
 
 (define-transient-command picnic ()
   ["Development"
-    ("d" "Diff" picnic/diff)
-    ("l" "Land" picnic/make)
-    ("r" "Release" picnic/release)
-    ("e" "Exec to app" picnic/dev-exec-to-app)
-    ("m" "Migration" picnic/dev-migration)
-    ("t" "Testing" picnic/dev-testing)]
+    ["Shipping"
+      ("d" "Diff" picnic/diff)
+      ("l" "Land" picnic/make)
+      ("r" "Release" picnic/release)]
+    ["Migration"
+      ("m c" "Create" picnic/dev-migration-create)
+      ("m r" "Run" picnic/dev-migration-up)
+      ("m u" "Undo" picnic/dev-migration-down)]
+    ["Testing"
+      ("t a" "app" picnic/dev-test-app)
+      ("t f" "app/frontend" picnic/dev-test-app-frontend)
+      ("t l" "labelling" picnic/dev-test-labelling)
+      ("t e" "export-dataset" picnic/dev-test-export-dataset)
+      ("t t" "export-dataset-tools" picnic/dev-test-export-dataset-tools)]
+    [("x" "Exec to app" picnic/dev-exec-to-app)]]
   ["Staging"
     ("s p" "Staging Pods" picnic/get-staging-pods)]
   ["Production"
@@ -371,3 +372,9 @@ ARGS is the arguments list from transient."
 
 (provide 'picnic)
 ;;; picnic.el ends here
+
+
+
+(defun test-transient ()
+  (interactive)
+  (transient-setup 'test-transient))
