@@ -45,7 +45,7 @@
 
 (defun picnic/create-or-pop-to-buffer (name)
   (unless (get-buffer name)
-      (get-buffer-create name))
+    (get-buffer-create name))
   (pop-to-buffer name))
 
 (defconst picnic/status-colors
@@ -205,22 +205,18 @@ ARGS is the arguments list from transient."
 
 (defun picnic/dev-run-in-terminal (working-directory command)
   (interactive)
-  (let ((buffer-name "picnic/dev-run-in-terminal")
+  (let ((buffer-name "*eshell*<picnic/dev-run-in-terminal>")
         (default-directory working-directory))
     (picnic/upsert-eshell-buffer buffer-name)
     (with-current-buffer buffer-name
       (eshell-return-to-prompt)
-      (insert command)
-      (eshell-send-input nil nil t))))
+      (insert command))))
 
 (defun picnic/dev-run-in-app (working-directory command)
   (interactive)
-  (let ((buffer-name "*eshell*<picnic/dev-run-in-app>")
-        (program "/bin/bash"))
-    (picnic/upsert-ansi-term-buffer buffer-name)
-    (comint-send-string
-      (format "*%s*" buffer-name)
-      (format "docker exec -it -w %s picnic_picnichealth-app_1 %s" working-directory command))))
+  (picnic/dev-run-in-terminal
+    default-directory
+    (format "docker exec -it -w %s picnic_picnichealth-app_1 %s" working-directory command)))
 
 (defun picnic/dev-exec-to-app ()
   (interactive)
@@ -229,6 +225,10 @@ ARGS is the arguments list from transient."
     (comint-send-string
       (format "*%s*" buffer-name)
       "docker exec -it picnic_picnichealth-app_1 bash")))
+
+;;;;;;;;;;;;;;;
+;; Migration ;;
+;;;;;;;;;;;;;;;
 
 (defun picnic/dev-migration-create ()
   (interactive)
@@ -270,6 +270,7 @@ ARGS is the arguments list from transient."
 ;;;;;;;;;;;;;
 ;; Testing ;;
 ;;;;;;;;;;;;;
+
 (defun picnic/dev-testing-arguments ()
   (transient-args 'picnic/dev-testing))
 
