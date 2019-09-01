@@ -1,25 +1,26 @@
 (require 'transient)
 
-(defconst picnic/tabulated-list-format
-  [("Name" 50 t)
-   ("Ready" 10 t)
-   ("Status" 20 t)
-   ("Restarts" 10 t)
-   ("Age" 15 t)]
-  "List format.")
-
 (defconst picnic/env-staging "staging")
 (defconst picnic/env-production "production")
+(defconst picnic/shell-buffer-name "picnic/shell")
 
-(defun picnic/upsert-ansi-term-buffer (buffer-name)
-  "Initialize term in a `term' buffer."
-  (ansi-term "bash" buffer-name))
+(defconst picnic/shell-banner-message
+  "\n.______    __    ______ .__   __.  __    ______\n|   _  \\  |  |  /      ||  \\ |  | |  |  /      |\n|  |_)  | |  | |  ,----'|   \\|  | |  | |  ,----'\n|   ___/  |  | |  |     |  . `  | |  | |  |\n|  |      |  | |  `----.|  |\\   | |  | |  `----.\n| _|      |__|  \\______||__| \\__| |__|  \\______|\n\n"
+
+  "Picnic banner. Tip: use string-edit")
+
+(defun picnic/create-or-pop-to-buffer (name)
+  "Create or find existing buffer by matching NAME."
+  (unless (get-buffer name)
+    (get-buffer-create name))
+  (pop-to-buffer name))
 
 (defun picnic/upsert-eshell-buffer (buffer-name)
   "Initialize eshell buffer."
-  (let* ((eshell-buffer-exists (member buffer-name
-                                 (mapcar (lambda (buf) (buffer-name buf))
-                                   (buffer-list)))))
+  (let ((eshell-buffer-exists (member buffer-name
+                                (mapcar (lambda (buf) (buffer-name buf))
+                                  (buffer-list))))
+        (eshell-banner-message picnic/shell-banner-message))
     (if eshell-buffer-exists
       (pop-to-buffer buffer-name)
       (progn
@@ -36,18 +37,6 @@
     ((equal env picnic/env-production) "pkubectl")
     (t "skubectl")))
 
-(defun picnic/buffer-name ()
-  "Return picnic buffer name."
-  (concat "*picnic/kube*"))
-
-(defvar picnic/log-tail-n "100"
-  "Number of lines to tail.")
-
-(defun picnic/create-or-pop-to-buffer (name)
-  (unless (get-buffer name)
-    (get-buffer-create name))
-  (pop-to-buffer name))
-
 (defconst picnic/status-colors
   '(("Running" . "green")
     ("Error" . "red")
@@ -55,6 +44,17 @@
     ("CrashLoopBackOff" . "red")
     ("Terminating" . "blue"))
   "Associative list of status to color.")
+
+(defconst picnic/kube-pod-list-format
+  [("Name" 50 t)
+   ("Ready" 10 t)
+   ("Status" 20 t)
+   ("Restarts" 10 t)
+   ("Age" 15 t)]
+  "List format.")
+
+(defvar picnic/log-tail-n "100"
+  "Number of lines to tail.")
 
 (defun picnic/propertize-status (status)
   "Return the status in proper font color. STATUS is the pod status string."
@@ -154,32 +154,25 @@ ARGS is the arguments list from transient."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun picnic/get-pods (env)
-  (picnic/create-or-pop-to-buffer (picnic/buffer-name))
-  (setq tabulated-list-format picnic/tabulated-list-format)
+  (picnic/create-or-pop-to-buffer "picnic/kube")
+  (setq tabulated-list-format picnic/kube-pod-list-format)
   (setq tabulated-list-entries (lambda () (picnic/list-entries env)))
   (tabulated-list-init-header)
   (tabulated-list-print)
   (picnic-kube-mode))
 
-(defun picnic/todo ()
-  (interactive)
-  (message "TODO"))
-
-(defun picnic/diff ()
-  (interactive)
-  (let
-    ((default-directory (projectile-project-root))
-      (picnic/diff-buffer-name "picnic/diff"))
-    (setenv "EDITOR" "emacs -Q")
-    (picnic/dev-run-in-terminal (projectile-project-root) "make diff")))
-
 (defun picnic/make (command &optional args)
   (interactive)
   (let
-    ((default-directory (projectile-project-root))
-      (picnic/land-buffer-name "picnic"))
-    (picnic/create-or-pop-to-buffer picnic/land-buffer-name)
-    (start-process "land" picnic/land-buffer-name "make" command)))
+    ((picnic/shell-buffer-name "picnic/shipping"))
+    (setenv "EDITOR" "emacs -Q")
+    (picnic/dev-run-in-terminal
+      (projectile-project-root)
+      (format "make %s" command))))
+
+(defun picnic/diff ()
+  (interactive)
+  (picnic/make "diff"))
 
 (defun picnic/land ()
   (interactive)
@@ -205,12 +198,13 @@ ARGS is the arguments list from transient."
 
 (defun picnic/dev-run-in-terminal (working-directory command)
   (interactive)
-  (let ((buffer-name "*eshell*<picnic/dev-run-in-terminal>")
+  (let ((buffer-name picnic/shell-buffer-name)
         (default-directory working-directory))
     (picnic/upsert-eshell-buffer buffer-name)
     (with-current-buffer buffer-name
       (eshell-return-to-prompt)
-      (insert command))))
+      (insert command)
+      (eshell-send-input))))
 
 (defun picnic/dev-run-in-app (working-directory command)
   (interactive)
@@ -352,7 +346,7 @@ ARGS is the arguments list from transient."
   ["Development"
     ["Shipping"
       ("d" "Diff" picnic/diff)
-      ("l" "Land" picnic/make)
+      ("l" "Land" picnic/land)
       ("r" "Release" picnic/release)]
     ["Migration"
       ("m c" "Create" picnic/dev-migration-create)
