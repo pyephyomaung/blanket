@@ -174,6 +174,16 @@ ARGS is the arguments list from transient."
       (picnic/repo-root)
       (format "make %s" command))))
 
+(defun picnic/show-recent-diff-tag ()
+  "Extract most recent phabricator git tag within branch."
+  (interactive)
+  (let ((default-directory (picnic/repo-root)))
+    (message
+      (string-trim-left
+      (string-trim-right
+        (shell-command-to-string "git describe --tags --abbrev=0 --match=phabricator/diff/\\*"))
+      "phabricator/diff/"))))
+
 (defun picnic/diff ()
   (interactive)
   (picnic/make "diff"))
@@ -185,7 +195,6 @@ ARGS is the arguments list from transient."
 (defun picnic/release ()
   (interactive)
   (picnic/make "release"))
-
 
 (defun picnic/get-staging-pods ()
   (interactive)
@@ -204,7 +213,7 @@ ARGS is the arguments list from transient."
 (defun picnic/dev-run-in-terminal (working-directory command)
   (interactive)
   (let ((buffer-name picnic/shell-buffer-name)
-        (default-directory (picnic/repo-root)))
+        (default-directory working-directory))
     (picnic/upsert-eshell-buffer buffer-name)
     (with-current-buffer buffer-name
       (eshell-return-to-prompt)
@@ -363,7 +372,8 @@ ARGS is the arguments list from transient."
       ("t l" "labelling" picnic/dev-test-labelling)
       ("t e" "export-dataset" picnic/dev-test-export-dataset)
       ("t t" "export-dataset-tools" picnic/dev-test-export-dataset-tools)]
-    [("x" "Exec to app" picnic/dev-exec-to-app)]]
+    [("x" "Exec to app" picnic/dev-exec-to-app)
+     ("y" "Show recent diff tag" picnic/show-recent-diff-tag)]]
   ["Staging"
     ("s p" "Staging Pods" picnic/get-staging-pods)]
   ["Production"
