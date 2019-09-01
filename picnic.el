@@ -27,6 +27,10 @@
         (eshell 99)
         (rename-buffer buffer-name)))))
 
+(defun picnic/repo-root ()
+  "Get picnic project root directory"
+  (vc-call-backend 'git 'root default-directory))
+
 ;;;;;;;;;;;;;;;;
 ;; Kubernetes ;;
 ;;;;;;;;;;;;;;;;
@@ -167,7 +171,7 @@ ARGS is the arguments list from transient."
     ((picnic/shell-buffer-name "picnic/shipping"))
     (setenv "EDITOR" "emacs -Q")
     (picnic/dev-run-in-terminal
-      (projectile-project-root)
+      (picnic/repo-root)
       (format "make %s" command))))
 
 (defun picnic/diff ()
@@ -194,12 +198,13 @@ ARGS is the arguments list from transient."
 (defun picnic/dev-select-migration-file ()
   (interactive)
   (file-name-nondirectory
-    (read-file-name "Select migration: " (concat (projectile-project-root) "packages/models/db/sequelize_migrations"))))
+    (read-file-name "Select migration: "
+      (concat (picnic/repo-root) "packages/models/db/sequelize_migrations"))))
 
 (defun picnic/dev-run-in-terminal (working-directory command)
   (interactive)
   (let ((buffer-name picnic/shell-buffer-name)
-        (default-directory working-directory))
+        (default-directory (picnic/repo-root)))
     (picnic/upsert-eshell-buffer buffer-name)
     (with-current-buffer buffer-name
       (eshell-return-to-prompt)
@@ -267,7 +272,7 @@ ARGS is the arguments list from transient."
 (define-suffix-command picnic/dev-test-app (args &optional is-frontend)
   "Test app."
   (interactive (list (picnic/dev-testing-arguments)))
-  (let* ((picnic-root (projectile-project-root))
+  (let* ((picnic-root (picnic/repo-root))
          (test-file (replace-regexp-in-string
                       ".*\/packages"
                       "packages"
@@ -276,7 +281,7 @@ ARGS is the arguments list from transient."
                           ((string-match picnic-root (buffer-file-name)) (buffer-file-name))
                           (t (concat picnic-root "packages/app/test")))))))
     (picnic/dev-run-in-terminal
-      (projectile-project-root)
+      (picnic/repo-root)
       (concat
         "docker run --rm"
         (format " --env-file %ssecrets/local.env" picnic-root)
@@ -305,22 +310,22 @@ ARGS is the arguments list from transient."
   "Test export_dataset."
   (interactive (list (picnic/dev-testing-arguments)))
   (picnic/dev-run-in-terminal
-    (concat (projectile-project-root) "python/picnic/export_dataset")
+    (concat (picnic/repo-root) "python/picnic/export_dataset")
     "../../bin/docker-test export_dataset picnichealth/export-dataset mount"))
 
 (define-suffix-command picnic/dev-test-labelling (args)
   "Test labelling."
   (interactive (list (picnic/dev-testing-arguments)))
   (picnic/dev-run-in-terminal
-    (concat (projectile-project-root) "python/picnic/labelling")
+    (concat (picnic/repo-root) "python/picnic/labelling")
     "../../bin/docker-test labelling picnichealth/labelling mount"))
 
 (define-suffix-command picnic/dev-test-export-dataset-tools (args)
   "Test export-dataset-tools."
   (interactive (list (picnic/dev-testing-arguments)))
-  (let ((picnic-root (projectile-project-root)))
+  (let ((picnic-root (picnic/repo-root)))
     (picnic/dev-run-in-terminal
-      (projectile-project-root)
+      (picnic/repo-root)
       (concat
         "docker run --rm"
         (format " --env-file %ssecrets/local.env" picnic-root)
