@@ -275,12 +275,9 @@ ARGS is the arguments list from transient."
 ;; Testing ;;
 ;;;;;;;;;;;;;
 
-(defun picnic/dev-testing-arguments ()
-  (transient-args 'picnic/dev-testing))
-
-(define-suffix-command picnic/dev-test-app (args &optional is-frontend)
+(defun picnic/dev-test-app (is-frontend)
   "Test app."
-  (interactive (list (picnic/dev-testing-arguments)))
+  (interactive)
   (let* ((picnic-root (picnic/repo-root))
          (test-file (replace-regexp-in-string
                       ".*\/packages"
@@ -310,28 +307,34 @@ ARGS is the arguments list from transient."
           (t
             (format " sh -c 'cd /picnic && make test-js-app TEST_FILES=%s'" test-file)))))))
 
-(defun picnic/dev-test-app-frontend (args)
-  (interactive (list (picnic/dev-testing-arguments)))
-  (picnic/dev-test-app args t))
+(defun picnic/dev-test-app-frontend ()
+  (interactive)
+  (picnic/dev-test-app t))
 
-
-(define-suffix-command picnic/dev-test-export-dataset (args)
+(defun picnic/dev-test-export-dataset ()
   "Test export_dataset."
-  (interactive (list (picnic/dev-testing-arguments)))
+  (interactive)
   (picnic/dev-run-in-terminal
     (concat (picnic/repo-root) "python/picnic/export_dataset")
     "../../bin/docker-test export_dataset picnichealth/export-dataset mount"))
 
-(define-suffix-command picnic/dev-test-labelling (args)
+(defun picnic/dev-test-labelling ()
   "Test labelling."
-  (interactive (list (picnic/dev-testing-arguments)))
+  (interactive)
   (picnic/dev-run-in-terminal
     (concat (picnic/repo-root) "python/picnic/labelling")
     "../../bin/docker-test labelling picnichealth/labelling mount"))
 
-(define-suffix-command picnic/dev-test-export-dataset-tools (args)
+(defun picnic/dev-test-trialing ()
+  "Test trialing."
+  (interactive)
+  (picnic/dev-run-in-terminal
+    (concat (picnic/repo-root) "python/picnic/trialing")
+    "../../bin/docker-test trialing picnichealth/trialing mount"))
+
+(defun picnic/dev-test-export-dataset-tools ()
   "Test export-dataset-tools."
-  (interactive (list (picnic/dev-testing-arguments)))
+  (interactive)
   (let ((picnic-root (picnic/repo-root)))
     (picnic/dev-run-in-terminal
       (picnic/repo-root)
@@ -369,9 +372,10 @@ ARGS is the arguments list from transient."
     ["Testing"
       ("t a" "app" picnic/dev-test-app)
       ("t f" "app/frontend" picnic/dev-test-app-frontend)
-      ("t l" "labelling" picnic/dev-test-labelling)
       ("t e" "export-dataset" picnic/dev-test-export-dataset)
-      ("t t" "export-dataset-tools" picnic/dev-test-export-dataset-tools)]
+      ("t t" "export-dataset-tools" picnic/dev-test-export-dataset-tools)
+      ("t l" "labelling" picnic/dev-test-labelling)
+      ("t t" "trialing" picnic/dev-test-trialing)]
     [("x" "Exec to app" picnic/dev-exec-to-app)
      ("y" "Show recent diff tag" picnic/show-recent-diff-tag)]]
   ["Staging"
