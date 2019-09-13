@@ -220,11 +220,24 @@ ARGS is the arguments list from transient."
       (insert command)
       (eshell-send-input))))
 
-(defun picnic/dev-run-in-app (working-directory command)
+(defun picnic/dev-run-in-app (env working-directory command)
   (interactive)
   (picnic/dev-run-in-terminal
-    default-directory
-    (format "docker exec -it -w %s picnic_picnichealth-app_1 %s" working-directory command)))
+    (picnic/repo-root)
+    (concat
+      "docker run --rm"
+      (format " --env-file %ssecrets/local.env" (picnic/repo-root))
+      (format " --env NODE_ENV=%s" env)
+      " --env USER"
+      " --env DEV_LOCAL_IP=host.docker.internal"
+      (format " -v %s:/picnic" (picnic/repo-root))
+      " -v /picnic/node_modules"
+      " -v /picnic/packages/app/node_modules"
+      " -v /picnic/packages/libs/node_modules"
+      " -v /picnic/packages/mission-design/node_modules"
+      " -v /picnic/packages/models/node_modules"
+      " picnic_picnichealth-app"
+      (format " sh -c 'cd %s && %s'" working-directory command))))
 
 (defun picnic/dev-exec-to-app ()
   (interactive)
@@ -240,30 +253,32 @@ ARGS is the arguments list from transient."
   (interactive)
   (let ((name (read-string "Migration name (use kebab-case): ")))
     (picnic/dev-run-in-app
+      "development"
       "/picnic/packages/models"
       (format "bin/sequelize migration:create --name %s" name))))
 
 (defun picnic/dev-migration-up ()
   "Run migration."
   (interactive)
-  (picnic/dev-run-in-app "/picnic/packages/models" "bin/sequelize db:migrate"))
+  (picnic/dev-run-in-app "development" "/picnic/packages/models" "bin/sequelize db:migrate"))
 
 (define-transient-command picnic/dev-migration-down ()
   "Undo database migration on dev env."
   (interactive)
   (let ((migration-name (picnic/dev-select-migration-file)))
     (picnic/dev-run-in-app
-    "/picnic/packages/models"
-    (format "bin/sequelize db:migrate:undo --name %s" migration-name))))
+      "development"
+      "/picnic/packages/models"
+      (format "bin/sequelize db:migrate:undo --name %s" migration-name))))
 
 (define-transient-command picnic/dev-migration ()
   "Migration on dev env."
   [:description "Arguments"
-   ("-n" "Undo by name" ("-n" "--name"))]
+    ("-n" "Undo by name" ("-n" "--name"))]
   [:description "Migration"
     ("c" "Create" picnic/dev-migration-create)
-   ("r" "Run" picnic/dev-migration-up)
-   ("u" "Undo" picnic/dev-migration-down)]
+    ("r" "Run" picnic/dev-migration-up)
+    ("u" "Undo" picnic/dev-migration-down)]
   (interactive)
   (transient-setup 'picnic/dev-migration nil nil))
 
@@ -275,7 +290,7 @@ ARGS is the arguments list from transient."
 ;; Testing ;;
 ;;;;;;;;;;;;;
 
-(defun picnic/dev-test-app (is-frontend)
+(defun picnic/dev-test-app (&optional is-frontend)
   "Test app."
   (interactive)
   (let* ((picnic-root (picnic/repo-root))
@@ -311,26 +326,43 @@ ARGS is the arguments list from transient."
   (interactive)
   (picnic/dev-test-app t))
 
-(defun picnic/dev-test-export-dataset ()
-  "Test export_dataset."
+(defun picnic/dev-test-python-module (module)
+  "Test a python module"
   (interactive)
   (picnic/dev-run-in-terminal
-    (concat (picnic/repo-root) "python/picnic/export_dataset")
-    "../../bin/docker-test export_dataset picnichealth/export-dataset mount"))
+    (concat (picnic/repo-root) (format "python/picnic/%s" module))
+    (format "../../bin/docker-test %s picnichealth/%s mount" module module)))
 
-(defun picnic/dev-test-labelling ()
-  "Test labelling."
+(defun picnic/dev-test-python-models ()
   (interactive)
-  (picnic/dev-run-in-terminal
-    (concat (picnic/repo-root) "python/picnic/labelling")
-    "../../bin/docker-test labelling picnichealth/labelling mount"))
+  (picnic/dev-test-python-module "db_models"))
 
-(defun picnic/dev-test-trialing ()
-  "Test trialing."
+(defun picnic/dev-test-python-export-dataset ()
+  (interactive)
+  (picnic/dev-test-python-module "export_dataset"))
+
+(defun picnic/dev-test-python-labelling ()
+  (interactive)
+  (picnic/dev-test-python-module "labelling"))
+
+(defun picnic/dev-test-python-trialing ()
+  (interactive)
+  (picnic/dev-test-python-module "trialing"))
+
+(defun picnic/dev-test-python-ui-action-logger ()
   (interactive)
   (picnic/dev-run-in-terminal
-    (concat (picnic/repo-root) "python/picnic/trialing")
-    "../../bin/docker-test trialing picnichealth/trialing mount"))
+    (concat (picnic/repo-root) "python/picnic/ui_action_logger")
+    (concat
+      "docker run --rm"
+      (format " --env-file %ssecrets/local.env" (picnic/repo-root))
+      " --env PYTHON_ENV=test"
+      " --env VERBOSE=0"
+      " --env USER"
+      (format " -v %s/python/picnic/db_models:/picnic/db_models" (picnic/repo-root))
+      (format " -v %s/python/picnic/ui_action_logger:/picnic/ui_action_logger" (picnic/repo-root))
+        " picnichealth/ui-action-logger/test"
+        " sh -c 'pytest -q /picnic/'")))
 
 (defun picnic/dev-test-export-dataset-tools ()
   "Test export-dataset-tools."
@@ -369,13 +401,16 @@ ARGS is the arguments list from transient."
       ("m c" "Create" picnic/dev-migration-create)
       ("m r" "Run" picnic/dev-migration-up)
       ("m u" "Undo" picnic/dev-migration-down)]
-    ["Testing"
+    ["Testing javascript"
       ("t a" "app" picnic/dev-test-app)
       ("t f" "app/frontend" picnic/dev-test-app-frontend)
-      ("t e" "export-dataset" picnic/dev-test-export-dataset)
-      ("t t" "export-dataset-tools" picnic/dev-test-export-dataset-tools)
-      ("t l" "labelling" picnic/dev-test-labelling)
-      ("t t" "trialing" picnic/dev-test-trialing)]
+      ("t d" "export-dataset-tools" picnic/dev-test-export-dataset-tools)]
+    ["Testing python"
+      ("t m" "models" picnic/dev-test-python-models)
+      ("t e" "export-dataset" picnic/dev-test-python-export-dataset)
+      ("t l" "labelling" picnic/dev-test-python-labelling)
+      ("t t" "trialing" picnic/dev-test-python-trialing)
+      ("t u" "ui-action-logger" picnic/dev-test-python-ui-action-logger)]
     [("x" "Exec to app" picnic/dev-exec-to-app)
      ("y" "Show recent diff tag" picnic/show-recent-diff-tag)]]
   ["Staging"
