@@ -330,10 +330,10 @@ ARGS is the arguments list from transient."
 
 (defun blanket/dev-run-in-terminal (working-directory command)
   (interactive)
-  (let ((buffer-name blanket/shell-buffer-name)
-        (default-directory working-directory))
+  (let ((buffer-name blanket/shell-buffer-name))
     (blanket/upsert-eshell-buffer buffer-name)
     (with-current-buffer buffer-name
+      (eshell/cd working-directory)
       (eshell-return-to-prompt)
       (insert command)
       ;; (eshell-send-input)
@@ -462,7 +462,7 @@ ARGS is the arguments list from transient."
   (interactive)
   (blanket/dev-run-in-terminal
     (concat (blanket/repo-root) (format "python/picnic/%s" module))
-    (format "../../bin/docker-test %s picnichealth/%s mount" module module)))
+    (format "../../bin/docker-test %s picnichealth/%s mount " module (string-inflection-kebab-case-function module))))
 
 (defun blanket/dev-test-python-models ()
   (interactive)
@@ -470,7 +470,7 @@ ARGS is the arguments list from transient."
 
 (defun blanket/dev-test-python-export-dataset ()
   (interactive)
-  (blanket/dev-test-python-module "export-dataset"))
+  (blanket/dev-test-python-module "export_dataset"))
 
 (defun blanket/dev-test-python-labelling ()
   (interactive)
