@@ -1,0 +1,26 @@
+#+TITLE: Blanket
+#+STARTUP: showall
+
+[[Made for Emacs 25.3+][https://img.shields.io/badge/Made_for-Emacs_25.3+-blueviolet.svg?style=for-the-badge]] [[Made for Emacs 25.3+][https://img.shields.io/badge/Version-Beta-blue.svg?style=for-the-badge]]
+
+Blanket is an interface to the Picnic development commands, implemented
+as an Emacs package.
+
+[[Blanket][https://gitlab.com/pyephyomaung/blanket/-/wikis/uploads/0edf82fbc94b06639dd0f3cd6a97af73/blanket.jpg]]
+
+* What is Blanket?
+  Either it is a romantic picnic or family picnic, we need something
+  to sit on and be productive and picnic blacket is the best option
+  for that. Otherwise, people can choose to stand or sit on the grass.
+
+* Getting started
+  It is not available on MELPA so you would have to do something like
+  this in your Emacs init file:
+
+  #+begin_src emacs-lisp
+  (load-file "<PATH_TO_THIS_REPO>/blanket.el")
+  #+end_src```
+
+  To try Blanket, just call ~M-x~ ~blanket~. This will show the top
+  level menu for Picnic commands.
+
