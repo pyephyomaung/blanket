@@ -518,6 +518,9 @@ ARGS is the arguments list from transient."
         " picnichealth/export-dataset"
         " sh -c 'cd /picnic/export_dataset_tools && make test'"))))
 
+;; load gitlab
+(load (concat (file-name-directory (or load-file-name buffer-file-name)) "gitlab.el"))
+
 ;;;;;;;;;;;;;;;
 ;; Main menu ;;
 ;;;;;;;;;;;;;;;
@@ -543,7 +546,8 @@ ARGS is the arguments list from transient."
       ("t t" "trialing" blanket/dev-test-python-trialing)
       ("t u" "ui-action-logger" blanket/dev-test-python-ui-action-logger)]
     [("x" "Exec to app" blanket/dev-exec-to-app)
-     ("y" "Show recent diff tag" blanket/show-recent-diff-tag)]]
+     ("y" "Show recent diff tag" blanket/show-recent-diff-tag)
+     ("g" "Gitlab issues" blanket/gitlab-show-issues)]]
   ["Staging"
     ("s p" "Pods" blanket/get-staging-pods)
     ("s s" "Services" blanket/get-staging-services)]
