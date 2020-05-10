@@ -14,10 +14,18 @@ as an Emacs package.
   for that. Otherwise, people can choose to stand or sit on the grass.
 
 * Getting started
+  Firstly, you would need to get your user name and access token from Gitlab settings. Then, set environment variables (eg. in ~/.bash_profile for OSX)
+  #+begin_src bash
+    export GITLAB_TOKEN=<YOUR_TOKEN>
+    export GITLAB_USERNAME=<YOUR_USER>
+  #+end_src
+
   It is not available on MELPA so you would have to do something like
   this in your Emacs init file:
 
   #+begin_src emacs-lisp
+  (exec-path-from-shell-copy-env "GITLAB_TOKEN")
+  (exec-path-from-shell-copy-env "GITLAB_USERNAME")
   (load-file "<PATH_TO_THIS_REPO>/blanket.el")
   #+end_src```
 

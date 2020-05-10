@@ -32,247 +32,6 @@
   "Get picnic project root directory"
   (vc-call-backend 'git 'root default-directory))
 
-;;;;;;;;;;;;;;;;
-;; Kubernetes ;;
-;;;;;;;;;;;;;;;;
-
-(defface blanket/container-image-face
-  '((t :foreground "SteelBlue"
-       :weight bold
-      :underline t))
-  "Face for docker image name")
-
-(defun blanket/kubectl (env)
-  "Utility function to prefix the kubectl command for ENV."
-  (cond
-    ((equal env blanket/env-production) "pkubectl")
-    (t "skubectl")))
-
-(defconst blanket/status-colors
-  '(("Running" . "green")
-    ("Error" . "red")
-    ("Completed" . "yellow")
-    ("CrashLoopBackOff" . "red")
-    ("Terminating" . "blue"))
-  "Associative list of status to color.")
-
-(defconst blanket/kube-pod-list-format
-  [("Name" 50 t)
-   ("Ready" 10 t)
-   ("Status" 20 t)
-   ("Restarts" 10 t)
-   ("Age" 15 t)]
-  "Pod list format.")
-
-(defconst blanket/kube-service-list-format
-  [("Name" 50 t)
-   ("Type" 15 t)
-   ("External-IP" 15 t)
-   ("Port" 20 t)
-   ("Age" 15 t)]
-  "Service list format.")
-
-(defvar blanket/log-tail-n "100"
-  "Number of lines to tail.")
-
-(defun blanket/propertize-status (status)
-  "Return the status in proper font color. STATUS is the pod status string."
-  (let ((pair (cdr (assoc status blanket/status-colors))))
-    (if pair
-        (propertize status 'font-lock-face `(:foreground ,pair))
-      status)))
-
-(defun blanket/list-pod-entries (env)
-  "Create the entries for the pod list."
-  (let ((temp
-          (list
-            (list
-              "env"
-              (vector
-                (propertize (format "%s @ %s" env (current-time-string)) 'font-lock-face `(:foreground "black" :background "white")) "" "" "" "" ""))))
-         (column-regex "^\\([a-z0-9\-]+\\) +\\([0-9]+/[0-9]+\\) +\\(\\w+\\) +\\([0-9]+\\) +\\([0-9a-z]+\\)$"))
-    (with-temp-buffer
-      (insert (shell-command-to-string (concat (blanket/kubectl env) " get pods --no-headers=true")))
-      (goto-char (point-min))
-      (while (re-search-forward column-regex (point-max) t)
-        (setq temp
-          (append
-            temp
-            (list
-              (list
-                (match-string 1)
-                (vector
-                  (match-string 1)
-                  (match-string 2)
-                  (blanket/propertize-status (match-string 3))
-                  (match-string 4)
-                  (match-string 5))))))))
-    temp))
-
-
-(defun blanket/list-service-entries (env)
-  "Create the entries for the service list."
-  (let ((temp
-          (list
-            (list
-              "env"
-              (vector
-                (propertize env 'font-lock-face `(:foreground "black" :background "white")) "" "" "" "" ""))))
-         (column-regex "^\\([a-z0-9-]+\\) +\\([^ ]+\\) +\\([^ ]+\\) +\\([^ ]+\\) +\\([^ ]+\\) +\\([^ ]+\\)$"))
-    (with-temp-buffer
-      (insert (shell-command-to-string (concat (blanket/kubectl env) " get services --no-headers=true")))
-      (goto-char (point-min))
-      (while (re-search-forward column-regex (point-max) t)
-        (setq temp
-          (append
-            temp
-            (list
-              (list
-                (match-string 1)
-                (vector
-                  (match-string 1)
-                  (match-string 2)
-                  (match-string 4)
-                  (match-string 5)
-                  (match-string 6))))))))
-    temp))
-
-
-(defun blanket/exec (env buffer-name async args)
-  "Utility function to run commands in the proper context and namespace.
-\"BUFFER-NAME\" is the buffer-name. Default to *blanket-command*.
-ASYNC is a bool. If true will run async.
-ARGS is a ist of arguments."
-  (message args)
-  (when (equal buffer-name "")
-    (setq buffer-name "*blanket-command*"))
-  (when (get-buffer buffer-name)
-    (kill-buffer buffer-name))
-  (if async
-    (apply #'start-process buffer-name buffer-name (blanket/kubectl env) args)
-    (apply #'call-process (blanket/kubectl env) nil buffer-name nil args))
-  (pop-to-buffer buffer-name))
-
-(defun blanket/default-tail-arg (args)
-  "Ugly function to make sure that there is at least the default tail.
-ARGS is the arg list from transient."
-  (if (car (remove nil (mapcar (lambda (x)
-                                 (string-prefix-p "--tail=" x)) args)))
-      args
-    (append args (list (concat "--tail=" blanket/log-tail-n)))))
-
-(defun blanket/get-pod-under-cursor ()
-  "Utility function to get the name of the pod under the cursor."
-  (aref (tabulated-list-get-entry (point)) 0))
-
-(defun blanket/get-containers (env pod-name)
-  "List the containers in a pod.
-POD-NAME is the name of the pod."
-  (split-string
-   (shell-command-to-string
-     (format "%s get pod %s -o jsonpath='{.spec.containers[*].name}'" (blanket/kubectl env) pod-name)) " "))
-
-(define-infix-argument blanket/log-pod-popup:--tail ()
-  :description "Tail"
-  :class 'transient-option
-  :shortarg "-n"
-  :argument "--tail=")
-
-(define-transient-command blanket/log-pod-popup ()
-  "Log Menu"
-  [:description "Arguments"
-    ("-f" "Follow" "-f")
-    ("-p" "Previous" "-p")
-    (blanket/log-pod-popup:--tail)]
-  [:description "Actions"
-    ("l" "Tail pod logs" blanket/get-pod-logs)]
-  (interactive)
-  (transient-setup 'blanket/log-pod-popup nil nil))
-
-(defun blanket/get-pod-logs (env &optional args)
-  "Get the last N logs of the pod under the cursor.
-ARGS is the arguments list from transient."
-  (interactive
-    (list (transient-args 'blanket/log-pod-popup)))
-  (let* ((pod (blanket/get-pod-under-cursor))
-         (containers (blanket/get-containers env pod))
-         (container (if (equal (length containers) 1)
-                      (car containers)
-                      (completing-read "Select container: " containers)))
-         (buffer-name (format "*%s - logs - %s - %s*" (blanket/kubectl env) pod container))
-         (async nil))
-    (when (member "-f" args)
-      (setq async t))
-    (blanket/exec env buffer-name async
-      (append '("logs") (blanket/default-tail-arg args) (list pod "-c" container)))))
-
-(defun blanket/get-pods (env)
-  "Get a list of pods from kubernetes cluster corresponding to ENV."
-  (blanket/create-or-pop-to-buffer "blanket/kube-pods")
-  (setq tabulated-list-format blanket/kube-pod-list-format)
-  (setq tabulated-list-entries (blanket/list-pod-entries env))
-  (setq tabulated-list-revert-hook (lambda () (setq tabulated-list-entries (blanket/list-pod-entries blanket-kube-env))))
-  (tabulated-list-init-header)
-  (tabulated-list-print)
-  (blanket-kube-pod-mode)
-  (with-current-buffer "blanket/kube-pods"
-    (make-local-variable 'blanket-kube-env)
-    (setq blanket-kube-env env)))
-
-(defun blanket/get-services (env)
-  "Get a list of services from kubernetes cluster corresponding to ENV."
-  (blanket/create-or-pop-to-buffer "blanket/kube-services")
-  (setq tabulated-list-format blanket/kube-service-list-format)
-  (setq tabulated-list-entries (lambda () (blanket/list-service-entries env)))
-  (tabulated-list-init-header)
-  (tabulated-list-print)
-  (blanket-kube-service-mode)
-  (with-current-buffer "blanket/kube-services"
-    (make-local-variable 'blanket-kube-env)
-    (setq blanket-kube-env env)))
-
-(defun blanket/describe-pod-at-point ()
-  (interactive)
-  (let* ((pod-name (blanket/get-pod-under-cursor))
-         (env blanket-kube-env)
-         (json-object-type 'hash-table)
-         (json-array-type 'list)
-         (json-key-type 'string)
-         (pod-json
-           (json-read-from-string
-             (shell-command-to-string (concat (blanket/kubectl env) " get pod " pod-name " -o json"))))
-         (pod-metadata (gethash "metadata" pod-json))
-         (pod-spec (gethash "spec" pod-json))
-         (pod-containers (gethash "containers" pod-spec)))
-    (blanket/create-or-pop-to-buffer "blanket/kube-pod")
-    (insert (format "%s.%s" (gethash "namespace" pod-metadata) (gethash "name" pod-metadata)))
-    (newline)
-    (newline)
-    (insert "Containers:")
-    (dolist (container pod-containers)
-      (newline)
-      (insert (format "%s -> %s"
-                (gethash "name" container)
-                (propertize (gethash "image" container) 'face 'blanket/container-image-face))))
-    (read-only-mode)
-    (goto-char (point-min))))
-
-;; mode for pod list
-(define-derived-mode blanket-kube-pod-mode tabulated-list-mode "Blanket Pods"
-  "Special mode for blanket pod buffers."
-  (buffer-disable-undo)
-  (setq show-trailing-whitespace nil))
-
-(defvar blanket-kube-pod-mode-map (make-sparse-keymap) "Keymap for blanket-kube-pod-mode")
-(define-key blanket-kube-pod-mode-map (kbd "q") 'kill-current-buffer)
-(define-key blanket-kube-pod-mode-map (kbd "l") 'blanket/log-pod-popup)
-(define-key blanket-kube-pod-mode-map (kbd "RET") 'blanket/describe-pod-at-point)
-
-;; mode for service list
-(define-derived-mode blanket-kube-service-mode tabulated-list-mode "Blanket Services")
-(defvar blanket-kube-service-mode-map (make-sparse-keymap) "Keymap for blanket-kube-service-mode")
-(define-key blanket-kube-service-mode-map (kbd "q") 'kill-current-buffer)
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Development commands ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -285,14 +44,6 @@ ARGS is the arguments list from transient."
     (blanket/dev-run-in-terminal
       (blanket/repo-root)
       (format "make %s" command))))
-
-(defun blanket/show-recent-diff-tag ()
-  "Extract most recent phabricator git tag within branch."
-  (interactive)
-  (let ((default-directory (blanket/repo-root)))
-    (blanket/dev-run-in-terminal
-      (blanket/repo-root)
-      "git fetch -t && git describe --tags --abbrev=0 --match=phabricator/diff/\\*")))
 
 (defun blanket/diff ()
   (interactive)
@@ -526,34 +277,34 @@ ARGS is the arguments list from transient."
 ;;;;;;;;;;;;;;;
 
 (define-transient-command blanket ()
-  ["Development"
-    ["Shipping"
-      ("d" "Diff" blanket/diff)
-      ("l" "Land" blanket/land)
-      ("r" "Release" blanket/release)]
-    ["Migration"
+  [
+    "Development"
+    [
+      "Shipping"
+      ("g" "Gitlab issues" blanket/gitlab-show-issues)
+    ]
+    [
+      "Migration"
       ("m c" "Create" blanket/dev-migration-create)
       ("m r" "Run" blanket/dev-migration-up)
-      ("m u" "Undo" blanket/dev-migration-down)]
-    ["Testing javascript"
+      ("m u" "Undo" blanket/dev-migration-down)
+    ]
+    [
+      "Testing javascript"
       ("t a" "app" blanket/dev-test-app)
       ("t f" "app/frontend" blanket/dev-test-app-frontend)
-      ("t x" "export-dataset-tools" blanket/dev-test-export-dataset-tools)]
-    ["Testing python"
+      ("t x" "export-dataset-tools" blanket/dev-test-export-dataset-tools)
+    ]
+    [
+      "Testing python"
       ("t m" "models" blanket/dev-test-python-models)
       ("t e" "export-dataset" blanket/dev-test-python-export-dataset)
       ("t l" "labelling" blanket/dev-test-python-labelling)
       ("t t" "trialing" blanket/dev-test-python-trialing)
-      ("t u" "ui-action-logger" blanket/dev-test-python-ui-action-logger)]
-    [("x" "Exec to app" blanket/dev-exec-to-app)
-     ("y" "Show recent diff tag" blanket/show-recent-diff-tag)
-     ("g" "Gitlab issues" blanket/gitlab-show-issues)]]
-  ["Staging"
-    ("s p" "Pods" blanket/get-staging-pods)
-    ("s s" "Services" blanket/get-staging-services)]
-  ["Production"
-    ("p p" "Pods" blanket/get-production-pods)
-    ("p s" "Services" blanket/get-production-services)])
+      ("t u" "ui-action-logger" blanket/dev-test-python-ui-action-logger)
+    ]
+  ]
+)
 
 (provide 'blanket)
 ;;; blanket.el ends here

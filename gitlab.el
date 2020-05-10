@@ -4,7 +4,7 @@
 (defvar blanket/gitlab-username (getenv "GITLAB_USERNAME"))
 (defvar blanket/gitlab-default-project-fullpath "team/picnic")
 
-(setq blanket/gitlab-issue-query "
+(defvar blanket/gitlab-issue-query "
 query GetIssues($project: ID!, $assignee: String!) {
   project(fullPath: $project) {
     name,
@@ -76,39 +76,13 @@ query GetIssues($project: ID!, $assignee: String!) {
     ;; issues is a vector so convert to list and return
     (cl-map 'list 'identity issues)))
 
-(defun blanket/gitlab-issues-to-org-raw-string ()
-  "Generate org elements as strin for Gitlab issues."
-  (let*
-    ((issues (blanket/gitlab-fetch-issues)))
-    (mapconcat
-      (lambda (issue)
-        (let*
-          (
-            (id (gethash "iid" issue))
-            (title (gethash "title" issue))
-            (state (gethash "state" issue))
-            (link (gethash "webUrl" issue))
-            (description (gethash "description" issue)))
-          (concat
-            "* TODO " (format "[[%s][%s]] " link id) title "\n"
-            "  :PROPERTIES:\n"
-            "  :ID: " id "\n"
-            "  :LINK: " link "\n"
-            "  :STATE: " state "\n"
-            "  :END:\n"
-            "  " description
-            ))
-        )
-      ;; convert vector to list
-      issues
-      "\n")))
 
 (defun blanket/gitlab-issue-to-org-element (issue)
   (let*
     ((id (gethash "iid" issue))
       (title (gethash "title" issue))
       (state (gethash "state" issue))
-      (link (blanket/gitlab-issue-link id))
+      (link (gethash "webUrl" issue))
       (description (gethash "description" issue))
       (label-titles
         (cl-map
