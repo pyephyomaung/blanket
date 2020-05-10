@@ -53,10 +53,6 @@
   (interactive)
   (blanket/make "land"))
 
-(defun blanket/release ()
-  (interactive)
-  (blanket/make "release"))
-
 (defun blanket/get-staging-pods ()
   (interactive)
   (blanket/get-pods blanket/env-staging))
@@ -94,8 +90,6 @@
 (defun blanket/dev-run-in-app (env working-directory command)
   (interactive)
   (let ((app-container (string-trim-right (shell-command-to-string "docker ps -f name=picnic_picnichealth-app_1 -q"))))
-    (print "enouhonehu'")
-    (print (length app-container))
     (cond
       ((> (length app-container) 0)
         (blanket/dev-run-in-terminal
@@ -278,10 +272,11 @@
 
 (define-transient-command blanket ()
   [
-    "Development"
+    "Picnista Fiesta! glhf"
     [
       "Shipping"
       ("g" "Gitlab issues" blanket/gitlab-show-issues)
+      ("l" "Land" blanket/land)
     ]
     [
       "Migration"
