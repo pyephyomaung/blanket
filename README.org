@@ -8,13 +8,18 @@ as an Emacs package.
 
 [[Blanket][https://gitlab.com/pyephyomaung/blanket/-/wikis/uploads/0edf82fbc94b06639dd0f3cd6a97af73/blanket.jpg]]
 
-* What is Blanket?
+* Why Blanket?
   Either it is a romantic picnic or family picnic, we need something
   to sit on and be productive and picnic blacket is the best option
   for that. Otherwise, people can choose to stand or sit on the grass.
 
+* Prerequisites
+  - [[https://github.com/magit/transient][transient]]
+  - [[https://github.com/purcell/exec-path-from-shell][exec-path-from-shell]]
+  - [[https://orgmode.org/][org-mode]]
+
 * Getting started
-  Firstly, you would need to get your user name and access token from Gitlab settings. Then, set environment variables (eg. in ~/.bash_profile for OSX)
+  First, you would need to get your user name and access token from Gitlab settings. Then, set environment variables (eg. in ~/.bash_profile for OSX)
   #+begin_src bash
     export GITLAB_TOKEN=<YOUR_TOKEN>
     export GITLAB_USERNAME=<YOUR_USER>
