@@ -1,11 +1,9 @@
 (require 'transient)
 (require 'json)
 
-(defconst blanket/env-staging "staging")
-(defconst blanket/env-production "production")
-(defconst blanket/shell-buffer-name "blanket/shell")
-
-(defconst blanket/shell-banner-message
+(defvar blanket/default-picnic-directory "~/Repositories/picnic")
+(defvar blanket/shell-buffer-name "blanket/shell")
+(defvar blanket/shell-banner-message
   "\n.______    __    ______ .__   __.  __    ______\n|   _  \\  |  |  /      ||  \\ |  | |  |  /      |\n|  |_)  | |  | |  ,----'|   \\|  | |  | |  ,----'\n|   ___/  |  | |  |     |  . `  | |  | |  |\n|  |      |  | |  `----.|  |\\   | |  | |  `----.\n| _|      |__|  \\______||__| \\__| |__|  \\______|\n\n"
 
   "Picnic banner. Tip: use string-edit")
@@ -30,7 +28,12 @@
 
 (defun blanket/repo-root ()
   "Get picnic project root directory"
-  (vc-call-backend 'git 'root default-directory))
+  (let ((current-root (vc-call-backend 'git 'root default-directory)))
+    (cond
+      ((string-match "picnic" current-root) current-root)
+      (t blanket/default-picnic-directory))))
+
+(cond ((string-match "picnic" "~/Repositiories/picnic") "yes") (t "no"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Development commands ;;
@@ -45,29 +48,13 @@
       (blanket/repo-root)
       (format "make %s" command))))
 
-(defun blanket/diff ()
+(defun blanket/lint-diff ()
   (interactive)
-  (blanket/make "diff"))
+  (blanket/make "lint-js-changed && make lint-py-changed"))
 
 (defun blanket/land ()
   (interactive)
   (blanket/make "land"))
-
-(defun blanket/get-staging-pods ()
-  (interactive)
-  (blanket/get-pods blanket/env-staging))
-
-(defun blanket/get-staging-services ()
-  (interactive)
-  (blanket/get-services blanket/env-staging))
-
-(defun blanket/get-production-pods ()
-  (interactive)
-  (blanket/get-pods blanket/env-production))
-
-(defun blanket/get-production-services ()
-  (interactive)
-  (blanket/get-services blanket/env-production))
 
 (defun blanket/dev-select-migration-file ()
   (interactive)
@@ -272,10 +259,11 @@
 
 (define-transient-command blanket ()
   [
-    "Picnista Fiesta! glhf"
+    "Picnista Fiesta! glhf!\n"
     [
-      "Shipping"
+      "Crafting"
       ("g" "Gitlab issues" blanket/gitlab-show-issues)
+      ("d" "Lint diff" blanket/lint-diff)
       ("l" "Land" blanket/land)
     ]
     [

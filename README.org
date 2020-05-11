@@ -37,4 +37,4 @@ as an Emacs package.
   To try Blanket, just call ~M-x~ ~blanket~. This will show the top
   level menu for Picnic commands.
 
-  [[Primary][https://gitlab.com/pyephyomaung/blanket/-/wikis/uploads/b9b474f5c17cdcff1e450c8113b653cf/Screen_Shot_2020-05-10_at_2.50.21_PM.png]]
+  [[Primary][https://gitlab.com/pyephyomaung/blanket/-/wikis/uploads/993dc15ae53dc6ab79a9904552ee0605/Screen_Shot_2020-05-11_at_11.29.48_AM.png]]
